@@ -11,6 +11,12 @@ import { composeRoleConfiguration } from "./settings.js";
 const ROLE_DIRECTORY = "pi-ext-roles";
 const starterDirectory = fileURLToPath(new URL("../starter/roles/", import.meta.url));
 
+export function validateRoleName(name: unknown): asserts name is string {
+  if (typeof name !== "string" || name.length === 0 || name.trim() !== name || /[\/\\]/.test(name) || [".", "..", "__proto__", "constructor", "prototype"].includes(name)) {
+    fail("INVALID_METADATA", `Invalid role name: ${String(name)}`);
+  }
+}
+
 export function parseRoleMarkdown(content: string, strict = false, rolePath?: string): AgentDefinition {
   if (!strict) {
     if (!content.startsWith("---\n")) return { prompt: content };
@@ -133,7 +139,11 @@ function scanRoleFiles(dirs: readonly RoleDirectoryInput[], extension: boolean):
       if (!extension && isNodeError(error, "ENOENT")) continue;
       fail("INVALID_METADATA", `${roleDirectoryLabel(source, extension)} role directory "${source.path}" could not be scanned: ${errorText(error)}`);
     }
-    for (const entry of entries) if (isRoleFile(source.path, entry)) files.push({ name: basename(entry.name, ".md"), path: join(source.path, entry.name), source });
+    for (const entry of entries) if (isRoleFile(source.path, entry)) {
+      const name = basename(entry.name, ".md");
+      validateRoleName(name);
+      files.push({ name, path: join(source.path, entry.name), source });
+    }
   }
   return files.sort((left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path));
 }
@@ -142,7 +152,6 @@ export interface RoleDiscoveryOptions {
   cwd: string;
   agentDir?: string;
   projectTrusted?: boolean;
-  includeFallbackRoles?: boolean;
   extensionRoleDirectories?: readonly RoleDirectoryInput[];
   additionalRoleSources?: readonly RoleDirectoryRegistration[];
 }
@@ -227,7 +236,7 @@ function discoveryInput(input: RoleDiscoveryOptions): ResolvedRoleDiscoveryOptio
 function discoveredRoleEntries(input: RoleDiscoveryOptions): Record<string, RoleEntry> {
   const resolved = discoveryInput(input);
   const sources: RoleDirectoryRegistration[] = [
-    ...(input.includeFallbackRoles === false ? [] : [{ path: starterDirectory, scope: "builtin" as const, builtin: true as const }]),
+    { path: starterDirectory, scope: "builtin" as const, builtin: true as const },
     ...resolved.extensionRoleDirectories.map(value => typeof value === "string" ? { path: value, scope: "extension" as const } : { scope: "extension" as const, ...value }),
     ...(input.additionalRoleSources ?? []),
     ...roleDirectories(resolved.agentDir).map(path => ({ path, scope: "global" as const, priority: 100 })),
@@ -243,7 +252,7 @@ function discoveredRoleEntries(input: RoleDiscoveryOptions): Record<string, Role
   }
   return result;
 }
-/** Scans only project role directories; `additionalRoleSources` (lower precedence) are legacy project directories. */
+/** Scans only project role directories and explicitly supplied sources. */
 export function loadProjectAgentDefinitions(cwd: string, additionalRoleSources: readonly RoleDirectoryRegistration[] = []): Readonly<Record<string, AgentDefinition>> {
   const sources = [...additionalRoleSources, ...projectRoleDirectories(join(cwd, ".pi")).map(path => ({ path, scope: "project" as const, priority: 100 }))];
   const result: Record<string, RoleEntry> = {};
@@ -254,7 +263,9 @@ export function discoverRoles(input: RoleDiscoveryOptions): Readonly<Record<stri
   return deepFreeze(Object.fromEntries(Object.entries(discoveredRoleEntries(input)).map(([name, entry]) => [name, entry.definition])));
 }
 export function loadRole(name: string, input: RoleDiscoveryOptions): AgentDefinition {
-  const entry = discoveredRoleEntries(input)[name];
+  validateRoleName(name);
+  const entries = discoveredRoleEntries(input);
+  const entry = Object.hasOwn(entries, name) ? entries[name] : undefined;
   if (!entry) fail("UNKNOWN_AGENT_TYPE", `Unknown agent role: ${name}`);
   return entry.definition;
 }
@@ -276,17 +287,18 @@ function rootToolNames(value: ReadonlySet<string> | readonly string[] | undefine
 }
 function roleDefinitionFor(name: string | undefined, options: RoleResolutionOptions): { definition?: AgentDefinition; path?: string } {
   if (name === undefined) return {};
+  validateRoleName(name);
   if (options.definition !== undefined) {
     const path = options.definition.provenance?.path;
     return { definition: options.definition, ...(path === undefined ? {} : { path }) };
   }
-  if (options.definitions?.[name] !== undefined) {
+  if (options.definitions !== undefined && Object.hasOwn(options.definitions, name)) {
     const definition = options.definitions[name];
     const path = definition.provenance?.path;
     return { definition, ...(path === undefined ? {} : { path }) };
   }
   const entries = discoveredRoleEntries(options);
-  const entry = entries[name];
+  const entry = Object.hasOwn(entries, name) ? entries[name] : undefined;
   if (!entry) fail("UNKNOWN_AGENT_TYPE", `Unknown agent role: ${name}`);
   return entry;
 }
