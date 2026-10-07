@@ -81,9 +81,9 @@ with migration warnings in TUI; this package and its native CLI never read those
 workflow paths automatically. Workflow users receive the library through workflow's
 dependency and need no separately enabled roles plugin for workflow agent calls.
 For the standalone binary, upgrade the old global `@piewf/cli` first so it no longer
-owns `pi-role`, then install this package after registry publication. Do not force
-an overwrite of the old binary. This repository currently uses a local development
-artifact; these registry upgrade instructions describe the planned release.
+owns `pi-role`, then install `@piewf/pi-ext-roles` from npm. Do not force
+an overwrite of the old binary. The workflow consumer release and its dependency
+migration are separate from the standalone package publication.
 
 Extension authors replace `registerWorkflowExtension({ roleDirectories })` with
 `registerRoleContribution` below. Keep unrelated workflow registration, including
@@ -102,13 +102,12 @@ on `main`, pull requests and release tags. `.github/workflows/publish.yml`
 publishes matching `vX.Y.Z` tags after checks pass, using npm Trusted Publishing
 with Node 24 and no permanent npm token. An already published version is skipped.
 
-For the initial `0.1.0` release, authenticate once with `npm login --auth-type=web`
-and publish with `npm publish --access public` after verification. Then configure
-npm's package Settings / Trusted publishing for GitHub owner `vekexasia`,
-repository `pi-ext-roles`, workflow `publish.yml`, with no environment configured.
-Only after that setup, push the matching release tag. Later releases update the
-manifest/lockfile version, pass checks, commit and push the matching tag. Registry
-publication is separate from the local workflow consumer dependency update.
+The initial `0.1.0` release bootstrapped npm with interactive authentication.
+The npm Trusted Publisher is configured for GitHub owner `vekexasia`, repository
+`pi-ext-roles`, workflow `publish.yml`, with no environment configured and direct
+`npm publish` permission. Releases update the manifest/lockfile version, pass
+checks, commit and push the matching tag. Registry publication is separate from
+the local workflow consumer dependency update.
 
 ## Configuration and resolution
 
