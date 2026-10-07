@@ -2,15 +2,16 @@ import { spawn } from "node:child_process";
 import { relative, resolve, isAbsolute, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { getAgentDir, parseArgs, DefaultResourceLoader, DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { createEventBus, getAgentDir, parseArgs, DefaultResourceLoader, DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { resolveProjectAuthorization } from "./authorization.js";
-import { discoverRoles, resolveRole } from "./roles.js";
+import { discoverRoles, resolveRole, type RoleDiscoveryOptions } from "./roles.js";
+import { collectRoleContributions } from "./contributions.js";
 import { composeRoleConfiguration } from "./settings.js";
 import { errorText, fail, modelAliasName, resolveModelReference, selectResourcesByLayers } from "./utils.js";
 import { canonicalPath, extensionIdentity } from "./paths.js";
 import { TOOL_LAYERS_FLAG } from "./cli-tool-bridge.js";
 
-export const LAUNCHER_USAGE = "Usage: pi-role [<role> | --role <role>] [Pi arguments...]\n       pi-role --list [--approve | --no-approve]\nWithout a role, launches stock Pi from PATH. Role extensionSettings are ignored by the CLI.\n";
+export const LAUNCHER_USAGE = "Usage: pi-role [<role> | --role <role>] [Pi arguments...]\n       pi-role --list [--approve | --no-approve]\nExperimental: --discover-extension-roles loads configured extension factories to discover roles.\nWithout a role, launches stock Pi from PATH. Role extensionSettings are ignored by the CLI.\n";
 const BUILTIN_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"];
 function resourcePath(input: string, cwd: string) {
   if (input.startsWith("builtin:")) return input;
@@ -39,7 +40,7 @@ function scanOptions(args: readonly string[]): { options: ScannedOption[]; end: 
   return { options, end: args.length };
 }
 // Native boolean flags never consume the following argument.
-const NATIVE_FLAGS = new Set(["--help", "--version", "--continue", "--resume", "--no-session", "--no-tools", "--no-builtin-tools", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--verbose", "--approve", "--no-approve", "--offline"]);
+const NATIVE_FLAGS = new Set(["--help", "--version", "--continue", "--resume", "--no-session", "--no-tools", "--no-builtin-tools", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--verbose", "--approve", "--no-approve", "--offline", "--discover-extension-roles"]);
 function stripOptions(args: string[], names: readonly string[]) {
   for (const { index, width } of scanOptions(args).options.filter(option => names.includes(option.name)).reverse()) args.splice(index, width + 1);
 }
@@ -60,8 +61,11 @@ async function launch(args: string[], cwd: string, agentDir: string): Promise<nu
   } finally { for (const { signal, handler } of handlers) process.off(signal, handler); }
 }
 export async function runPiRole(argv: readonly string[], cwd = process.cwd(), agentDir = getAgentDir()): Promise<number> {
+  let extensionLoadFailures = false;
   try {
     const rest = [...argv];
+    const discoverExtensionRoles = scanOptions(rest).options.some(option => option.name === "--discover-extension-roles");
+    stripOptions(rest, ["--discover-extension-roles"]);
     let role: string | undefined;
     const roleOption = scanOptions(rest).options.find(option => option.name === "--role");
     if (roleOption) {
@@ -75,7 +79,23 @@ export async function runPiRole(argv: readonly string[], cwd = process.cwd(), ag
     if (list) rest.splice(scanOptions(rest).options.find(option => option.name === "--list")!.index, 1);
     const parsed = parseArgs(rest);
     const projectTrusted = resolveProjectAuthorization(cwd, agentDir, parsed.projectTrustOverride);
-    const discovery = { cwd, agentDir, projectTrusted };
+    const discovery: RoleDiscoveryOptions & { agentDir: string } = { cwd, agentDir, projectTrusted };
+    if (discoverExtensionRoles) {
+      // loader.reload() resolves packages without onMissing and would install them; fail on missing sources first, as the launcher does.
+      await new DefaultPackageManager({ cwd, agentDir, settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted }) }).resolve(async () => "error");
+      const eventBus = createEventBus();
+      const loader = new DefaultResourceLoader({ cwd, agentDir, eventBus,
+        settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted }),
+        noExtensions: parsed.noExtensions, noSkills: true, noThemes: true, noPromptTemplates: true, noContextFiles: true });
+      try {
+        await loader.reload();
+        const loaded = loader.getExtensions();
+        extensionLoadFailures = loaded.errors.length > 0;
+        for (const error of loaded.errors) process.stderr.write(`pi-role: warning: Extension ${error.path}: ${error.error}\n`);
+        discovery.extensionRoleDirectories = collectRoleContributions(eventBus, loaded);
+        discovery.includeFallbackRoles = false;
+      } finally { loader.getExtensions().runtime.invalidate(); eventBus.clear(); }
+    }
     if (list || help) {
       process.stdout.write(LAUNCHER_USAGE);
       for (const [name, definition] of Object.entries(discoverRoles(discovery)).sort(([a], [b]) => a.localeCompare(b))) process.stdout.write(`  ${name.padEnd(16)}${definition.description ?? ""}\n`);
@@ -159,5 +179,8 @@ export async function runPiRole(argv: readonly string[], cwd = process.cwd(), ag
     }
     insertOptions(rest, additions);
     return await launch(rest, cwd, agentDir);
-  } catch (error) { process.stderr.write(`pi-role: ${errorText(error)}\n`); return 1; }
+  } catch (error) {
+    const note = extensionLoadFailures && error instanceof Error && "code" in error && error.code === "UNKNOWN_AGENT_TYPE" ? " (some extensions failed to load; see warnings above)" : "";
+    process.stderr.write(`pi-role: ${errorText(error)}${note}\n`); return 1;
+  }
 }

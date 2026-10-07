@@ -142,6 +142,7 @@ export interface RoleDiscoveryOptions {
   cwd: string;
   agentDir?: string;
   projectTrusted?: boolean;
+  includeFallbackRoles?: boolean;
   extensionRoleDirectories?: readonly RoleDirectoryInput[];
   additionalRoleSources?: readonly RoleDirectoryRegistration[];
 }
@@ -226,7 +227,7 @@ function discoveryInput(input: RoleDiscoveryOptions): ResolvedRoleDiscoveryOptio
 function discoveredRoleEntries(input: RoleDiscoveryOptions): Record<string, RoleEntry> {
   const resolved = discoveryInput(input);
   const sources: RoleDirectoryRegistration[] = [
-    { path: starterDirectory, scope: "builtin" as const, builtin: true as const },
+    ...(input.includeFallbackRoles === false ? [] : [{ path: starterDirectory, scope: "builtin" as const, builtin: true as const }]),
     ...resolved.extensionRoleDirectories.map(value => typeof value === "string" ? { path: value, scope: "extension" as const } : { scope: "extension" as const, ...value }),
     ...(input.additionalRoleSources ?? []),
     ...roleDirectories(resolved.agentDir).map(path => ({ path, scope: "global" as const, priority: 100 })),
