@@ -1,6 +1,6 @@
 {
   "name": "@piewf/pi-ext-roles",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Independent Pi role resolution options, contributions and native startup launcher",
   "license": "MIT",
@@ -58,7 +58,9 @@
     "dist",
     "src",
     "starter",
-    "README.md"
+    "docs",
+    "README.md",
+    "RELEASING.md"
   ],
   "scripts": {
     "build": "rm -f dist/pi.js dist/pi.d.ts && tsc",

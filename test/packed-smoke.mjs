@@ -10,7 +10,7 @@ try {
  assert.equal(manifest.peerDependencies['@earendil-works/pi-coding-agent'],'*');
  assert.equal(manifest.dependencies['@earendil-works/pi-coding-agent'],undefined);
  const packed=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--json','--pack-destination',dir],{cwd:root,encoding:'utf8'}))[0];
- for(const path of ['dist/index.d.ts','dist/launcher.d.ts','src/extension.ts','src/cli-tool-bridge.ts','dist/cli-tool-bridge.js',...['developer','oracle','researcher','reviewer','scout'].map(n=>`starter/roles/${n}.md`)])assert.ok(packed.files.some(f=>f.path===path),path);
+ for(const path of ['README.md','LICENSE','RELEASING.md','docs/roles.md','dist/index.d.ts','dist/launcher.d.ts','src/extension.ts','src/cli-tool-bridge.ts','dist/cli-tool-bridge.js',...['developer','oracle','researcher','reviewer','scout'].map(n=>`starter/roles/${n}.md`)])assert.ok(packed.files.some(f=>f.path===path),path);
  assert.equal(manifest.exports['./pi'],undefined);
  for(const path of ['src/pi.ts','dist/pi.js','dist/pi.d.ts']) assert.ok(!packed.files.some(f=>f.path===path),path);
  for(const name of ['a','b']) {
