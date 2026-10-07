@@ -1,0 +1,82 @@
+{
+  "name": "@piewf/pi-ext-roles",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Independent Pi role resolution options, contributions and native startup launcher",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vekexasia/pi-ext-roles.git"
+  },
+  "homepage": "https://github.com/vekexasia/pi-ext-roles#readme",
+  "bugs": "https://github.com/vekexasia/pi-ext-roles/issues",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./roles": {
+      "types": "./dist/roles.d.ts",
+      "import": "./dist/roles.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
+    },
+    "./paths": {
+      "types": "./dist/paths.d.ts",
+      "import": "./dist/paths.js"
+    },
+    "./utils": {
+      "types": "./dist/utils.d.ts",
+      "import": "./dist/utils.js"
+    },
+    "./launcher": {
+      "types": "./dist/launcher.d.ts",
+      "import": "./dist/launcher.js"
+    }
+  },
+  "bin": {
+    "pi-role": "./dist/cli.js"
+  },
+  "pi": {
+    "extensions": [
+      "./src/extension.ts"
+    ]
+  },
+  "files": [
+    "dist",
+    "src",
+    "starter",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rm -f dist/pi.js dist/pi.d.ts && tsc",
+    "test": "npm run build && PI_OFFLINE=1 node --test test/*.test.mjs",
+    "check": "tsc --noEmit && npm test",
+    "prepack": "npm run build",
+    "test:package": "npm run build && PI_OFFLINE=1 node test/packed-smoke.mjs",
+    "test:terminal": "npm run build && python3 test/terminal-smoke.py"
+  },
+  "dependencies": {
+    "minimatch": "10.2.4"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@types/node": "22.19.15",
+    "typescript": "5.9.3"
+  }
+}
