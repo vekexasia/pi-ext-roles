@@ -13,11 +13,13 @@ const ai = new URL('../node_modules/@earendil-works/pi-ai/dist/', import.meta.re
 const { streamSimple } = await import(new URL('api/openai-codex-responses.js', ai));
 const { getModel } = await import(new URL('compat.js', ai));
 const { Type } = await import(pathToFileURL(requireSdk.resolve('typebox')));
+// Without a workflow host nothing freezes or resets the process-wide registry, so each session must start from a fresh one.
+const workflows = await import('pi-extensible-workflows/registry').catch(error => { if (error?.code === 'ERR_MODULE_NOT_FOUND') return undefined; throw error; });
 // Synthetic SSE verifies the real SDK/provider serializer, not remote cache hits or live web services.
 for (const [tool,exposure] of [['workflow','direct'], ['subagents_run','direct'], ['subagents_run','deferred']]) test(`role descriptions preserve the dynamic provider prefix: ${tool}/${exposure} (#311)`, async t => {
  const dir=mkdtempSync(join(tmpdir(),'workflow-tool-prefix-')),agentDir=join(dir,'agent');
  mkdirSync(agentDir,{recursive:true});
- t.after(()=>{rmSync(dir,{recursive:true,force:true});});
+ t.after(()=>{rmSync(dir,{recursive:true,force:true});workflows?.resetWorkflowRegistry();});
  const catalog=getModel('openai-codex','gpt-5.6-luna');assert.ok(catalog);
  const model={...catalog,baseUrl:'https://fixture.invalid'};
  assert.equal(model.compat.supportsMidConvoSystemMessages,true);
@@ -68,7 +70,14 @@ for (const [tool,exposure] of [['workflow','direct'], ['subagents_run','direct']
   assert.deepEqual(second.input.slice(0,first.input.length),first.input);
   assert.deepEqual(third.input.slice(0,second.input.length),second.input,'no earlier transcript items lost');
   assert.equal(second.instructions,first.instructions);assert.equal(third.instructions,first.instructions);
-  assert.match(third.instructions,/EXISTING APPEND[\s\S]*Workflow role descriptions:/);
+  assert.match(third.instructions,/EXISTING APPEND[\s\S]*Role options \(pi-ext-roles\):[\s\S]*Workflow role descriptions:/);
+  assert.ok(third.instructions.includes('agent(prompt, { role: "name" })'));
+  assert.ok(third.instructions.includes('subagents_run({ prompt, role: "name" })'));
+  assert.match(third.instructions,/Explicit call options for these fields take precedence within the allowed resources/);
+  const guidance=third.instructions.split('Role options (pi-ext-roles):')[1].split('Workflow role descriptions:')[0];
+  assert.doesNotMatch(guidance,/frontmatter|overrideSystemPrompt|systemPromptAppend|forceSystemPrompt/);
+  assert.equal(third.instructions.split('Role options (pi-ext-roles):').length,2,'guidance must not accumulate across turns');
+  assert.equal(third.instructions.split('Workflow role descriptions:').length,2);
   for(const name of ['developer','reviewer','scout','oracle','researcher'])assert.ok(third.instructions.includes('`'+name+'`'));
   assert.deepEqual(forced,[undefined,undefined]);assert.deepEqual(errors,[]);
   t.diagnostic(JSON.stringify({tools:payloads.map(payload=>payload.tools.length),additional_tools:payloads.map(payload=>payload.input.filter(item=>item.type==='additional_tools').length)}));

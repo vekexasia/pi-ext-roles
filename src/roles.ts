@@ -4,12 +4,18 @@ import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition, AgentResourceSelectorSources, AgentResourceSelectors, ContextFileScope, ModelSpec, ExtensionSettings, RoleDirectoryRegistration } from "./types.js";
 import { validateContextFileScopes, validateSelectorList, validateExtensionSettings } from "./settings.js";
 import { mergeExtensionSettings, assertModelThinking, deepFreeze, object, errorText, fail, isNodeError, modelAliasName, modelCapability, resourcePatternHasMagic, resolveModelReference, selectResourcesByLayers, unmatchedResourcePatterns } from "./utils.js";
-import { canonicalPath, extensionIdentity } from "./paths.js";
+import { canonicalPath, extensionIdentity, sameFilesystemPath } from "./paths.js";
 import { fileURLToPath } from "node:url";
 import { composeRoleConfiguration } from "./settings.js";
 
 const ROLE_DIRECTORY = "pi-ext-roles";
 const starterDirectory = fileURLToPath(new URL("../starter/roles/", import.meta.url));
+
+/** True only for an un-overridden fallback role file shipped in this package, not for contributions that declare a builtin scope. */
+export function isPackagedFallbackRole(definition: AgentDefinition | undefined): boolean {
+  const path = definition?.provenance?.path;
+  return path !== undefined && sameFilesystemPath(dirname(path), starterDirectory);
+}
 
 export function validateRoleName(name: unknown): asserts name is string {
   if (typeof name !== "string" || name.length === 0 || name.trim() !== name || /[\/\\]/.test(name) || [".", "..", "__proto__", "constructor", "prototype"].includes(name)) {

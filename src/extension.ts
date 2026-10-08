@@ -12,7 +12,12 @@ export default async function rolesExtension(api: ExtensionAPI): Promise<void> {
     const roles = Object.entries(discoverRoles({ cwd: ctx.cwd, agentDir, projectTrusted: ctx.isProjectTrusted(),
       extensionRoleDirectories: collectRoleContributions(api.events, { activeOnly: true }) })).filter(([, definition]) => definition.description);
     if (!roles.length) return;
-    const content = `Workflow role descriptions:\n${roles.map(([name, definition]) => `- \`${name}\`: ${definition.description}`).join("\n")}`;
+    const content = `Role options (pi-ext-roles):
+Use agent(prompt, { role: "name" }) in workflow scripts, or subagents_run({ prompt, role: "name" }) for standalone subagents.
+The selected role supplies instructions and defaults for model, tools, skills, extensions, contextFiles and extensionSettings. Explicit call options for these fields take precedence within the allowed resources.
+
+Workflow role descriptions:
+${roles.map(([name, definition]) => `- \`${name}\`: ${definition.description}`).join("\n")}`;
     const { appendSystemPrompt } = event.systemPromptOptions;
     event.systemPromptOptions.appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${content}` : content;
   });
@@ -27,5 +32,5 @@ export default async function rolesExtension(api: ExtensionAPI): Promise<void> {
   const registry = await import(import.meta.resolve("pi-extensible-workflows/registry"));
   if (registry.loadingRegistry().frozen) return;
   const { registerWorkflowRoles } = await import("./workflow.js");
-  registerWorkflowRoles(api, registry);
+  registerWorkflowRoles(api, registry, import.meta.url);
 }

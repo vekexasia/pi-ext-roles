@@ -80,7 +80,8 @@ of the old binary.
 Extension authors replace `registerWorkflowExtension({ roleDirectories })` with
 `registerRoleContribution` below. Keep unrelated workflow registration, including
 `source`, in workflows. The five model-free fallback roles always remain
-available; configure a model/alias explicitly if you relied on an old workflow
+available. The workflow adapter applies a configured `<role>-model` alias to
+them; elsewhere configure a model/alias explicitly if you relied on an old workflow
 fallback model. Runtime creation, persistence, settings delivery and disposal
 remain the consumer's responsibility, not this package's.
 
@@ -99,6 +100,19 @@ It collects contributions on this Pi event bus with `activeOnly: true`, after
 normal `session_start`. Consumers must start and retain that runtime before
 preparation, and dispose it when the operation ends. No factory discovery replay
 or fake lifecycle is needed. Shared settings apply even when `role` is omitted.
+Role files and shared settings come from the consumer's launch project
+(`projectCwd`, falling back to `cwd`), also for worktree agents. Relative extension
+selectors in role files and shared settings stay relative to their file in the
+launch project; relative call selectors resolve against the execution `cwd`, so a
+worktree agent's call selects the worktree's copy.
+
+The Pi entry registers the hook with its own module URL as `source`, so a consumer
+can prove the hook's extension loaded. The hook's `optionsSchema` validates `role` and declares the other options it reads
+(`systemPrompt`, `systemPromptAppend`, `extensionSettings`) without validating them,
+so a consumer can tell them apart from options of an extension that failed to load.
+An unknown role fails preparation with `INVALID_METADATA` and the message
+`Unknown agent role: <name>`; the library and native launcher keep
+`UNKNOWN_AGENT_TYPE`.
 
 Selectors become complete ordered arrays: shared global/project, consumer
 global/project, role, call. Relative role extension selectors retain their file
@@ -106,8 +120,21 @@ provenance. Call model and context scopes override the role; model aliases becom
 physical model references. An alias target without thinking becomes
 `provider/model` without an invented thinking level; the original call options
 retain the alias for consumer recovery validation before preparation. An inherited
-consumer model without a thinking level stays implicit. Settings replace individual
-namespaces in shared, consumer/parent, role, then call `extensionSettings` order.
+consumer model without a thinking level stays implicit. When the consumer supplies
+`defaults.dynamicModelAliasNames`, aliases resolve extension-dynamic < shared <
+consumer static; otherwise consumer aliases overlay shared ones. Shared aliases
+resolve only inside this hook, so a consumer catalog or doctor alias inventory does
+not list them. A packaged fallback role (one of the five files shipped in this
+package, not overridden and not a contribution that declares a `builtin` scope),
+without call or role model, uses a `<role>-model` alias when one is configured in
+any layer. A configured alias whose target is unavailable fails with
+`UNKNOWN_MODEL`, like any explicit alias. Without such an alias the role inherits
+the root model and its thinking level; a virtual `workflow/<alias>` root model is
+passed on unchanged for the consumer to resolve. The library, CLI and role files
+stay model-free. A trusted project `extensionSettings` map, including
+`{}`, replaces the shared global map; consumer/parent, role, then call
+`extensionSettings` replace individual namespaces. The library keeps its
+per-namespace shared merge.
 An explicit label wins; otherwise the role supplies it. Role instructions append through
 `systemPromptAppend`, or set the `systemPrompt` base for override roles. An
 explicit call `systemPrompt`, including an empty string, conflicts with a role
@@ -119,7 +146,8 @@ before nonoverride role instructions are prepended. The consumer performs final 
 model, context, settings and capability validation under root/parent ceilings;
 the plugin cannot authorize extra capabilities.
 
-The plugin also appends discovered descriptions to structured
+The plugin also appends role-call syntax, supported defaults and their call
+precedence, followed by discovered descriptions, to structured
 `before_agent_start.systemPromptOptions.appendSystemPrompt` when workflow or
 standalone-subagent tools are available, preserving an existing append. It never
 forces the complete prompt. Descriptions use Pi's configured agent directory
@@ -164,7 +192,7 @@ Package entrypoints: `.`, `/roles`, `/types`, `/settings`, `/paths`, `/utils`, `
 - `/paths`: `canonicalPath`, `extensionIdentity`, `sameFilesystemPath`.
 - `/utils`: JSON checks/namespace merge, freeze/object/error helpers, model reference/alias/thinking validation and resolution, capability extraction, minimatch validation/matching/ordered selection/unmatched diagnostics. No unrelated runtime helpers.
 - `/launcher`: `runPiRole(argv, cwd?, agentDir?)`, `LAUNCHER_USAGE`.
-- `/workflow`: `registerWorkflowRoles(pi, registry)` and structural preparation types. The Pi factory normally registers this adapter automatically when workflows is present.
+- `/workflow`: `registerWorkflowRoles(pi, registry, source?)` and structural preparation types. `source` is the module URL of the Pi extension entry that calls it, so consumers can prove the registration came from a loaded extension. The Pi factory normally registers this adapter automatically, with its own `import.meta.url`, when workflows is present.
 
 Role names must be nonempty, without marginal whitespace or path separators, and cannot be `.`, `..`, `__proto__`, `constructor` or `prototype`. Pure discovery has no implicit contribution registry. A Pi consumer supplies the directories collected from its actual loaded extension set. Minimal contributor:
 

@@ -19,7 +19,7 @@ function fixture(t) {
 }
 test('registration exposes only the optional role schema and generic preparation',t=>{
  const f=fixture(t);assert.equal(f.registration.version,'0.1.3');assert.equal(f.registration.headline,'Pi roles');
- assert.deepEqual(f.registration.agentPreparationHooks.roles.optionsSchema,{type:'object',properties:{role:{type:'string',minLength:1}},additionalProperties:true});
+ assert.deepEqual(f.registration.agentPreparationHooks.roles.optionsSchema,{type:'object',properties:{role:{type:'string',minLength:1},systemPrompt:{},systemPromptAppend:{},extensionSettings:{}},additionalProperties:true},'declares every option the adapter reads, validating only role');
 });
 test('inherited models without thinking remain implicit for calls without a role and model-free roles',async t=>{
  const f=fixture(t);
