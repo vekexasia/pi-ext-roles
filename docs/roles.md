@@ -110,8 +110,11 @@ consumer model without a thinking level stays implicit. Settings replace individ
 namespaces in shared, consumer/parent, role, then call `extensionSettings` order.
 An explicit label wins; otherwise the role supplies it. Role instructions append through
 `systemPromptAppend`, or set the `systemPrompt` base for override roles. An
-explicit call `systemPrompt` base wins over a role base, including an empty
-string. An explicit `systemPromptAppend` replaces the prepared append channel
+explicit call `systemPrompt`, including an empty string, conflicts with a role
+whose `overrideSystemPrompt` is true. Preparation fails with `INVALID_METADATA`
+before session creation; use `systemPromptAppend` to add instructions instead.
+Without role override, an explicit call base remains valid and the role body
+still appends. An explicit `systemPromptAppend` replaces the prepared append channel
 before nonoverride role instructions are prepended. The consumer performs final concrete
 model, context, settings and capability validation under root/parent ceilings;
 the plugin cannot authorize extra capabilities.

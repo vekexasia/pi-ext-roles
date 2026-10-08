@@ -74,14 +74,28 @@ test('shared settings apply without a role; trust is explicit and call overrides
  await assert.rejects(f.prepare({role:'custom'}),/Unknown model/);
  assert.throws(()=>f.registration.agentPreparationHooks.roles.prepare({tools:[],skills:[],extensions:[],systemPromptAppend:'',settings:{}},{...f.context,projectTrusted:true}),/settings/);
 });
-test('role override uses base channel, preserves append, and explicit call base wins',async t=>{
- const f=fixture(t);put(join(f.agentDir,'pi-ext-roles/roles/custom.md'),'---\noverrideSystemPrompt: true\ncontextFiles: []\n---\nBASE');
- const config=await f.prepare({role:'custom'});assert.equal(config.systemPrompt,'BASE');assert.equal(config.systemPromptAppend,'EXISTING');
- const explicit=await f.prepare({role:'custom',systemPrompt:'CALL'});assert.equal(explicit.systemPrompt,'CALL');assert.equal(explicit.systemPromptAppend,'EXISTING');
- const empty=await f.prepare({role:'custom',systemPrompt:''});assert.equal(empty.systemPrompt,'');
- const appended=await f.prepare({role:'custom',systemPromptAppend:'CALL_APPEND'});assert.equal(appended.systemPromptAppend,'CALL_APPEND');
- await assert.rejects(f.prepare({role:'custom',systemPrompt:42}),/systemPrompt must be a string/);
+test('role override rejects an explicit call base before mutating preparation and preserves append',async t=>{
+ const f=fixture(t);
+ for(const field of ['overrideSystemPrompt','override_system_prompt','is_system_prompt']) {
+  put(join(f.agentDir,'pi-ext-roles/roles/custom.md'),`---\n${field}: true\ncontextFiles: []\n---\nBASE`);
+  const config=await f.prepare({role:'custom'});assert.equal(config.systemPrompt,'BASE');assert.equal(config.systemPromptAppend,'EXISTING');
+  const appended=await f.prepare({role:'custom',systemPromptAppend:'CALL_APPEND'});assert.equal(appended.systemPrompt,'BASE');assert.equal(appended.systemPromptAppend,'CALL_APPEND');
+  for(const systemPrompt of ['CALL','']) {
+   const untouched={tools:[],skills:[],extensions:[],systemPromptAppend:'EXISTING',settings:{}};
+   const before=structuredClone(untouched);
+   assert.throws(()=>f.registration.agentPreparationHooks.roles.prepare(untouched,{...f.context,options:{role:'custom',systemPrompt}}),error=>error.code==='INVALID_METADATA'&&/custom.*overrideSystemPrompt.*systemPrompt.*systemPromptAppend/.test(error.message));
+   assert.deepEqual(untouched,before);
+  }
+ }
+ await assert.rejects(f.prepare({systemPrompt:42}),/systemPrompt must be a string/);
  await assert.rejects(f.prepare({role:'custom',systemPromptAppend:42}),/systemPromptAppend must be a string/);
+});
+test('explicit call base remains valid without role override and keeps appended role instructions',async t=>{
+ const f=fixture(t);put(join(f.agentDir,'pi-ext-roles/roles/custom.md'),'---\noverrideSystemPrompt: false\n---\nROLE');
+ for(const systemPrompt of ['CALL','']) {
+  const config=await f.prepare({role:'custom',systemPrompt});assert.equal(config.systemPrompt,systemPrompt);assert.equal(config.systemPromptAppend,'ROLE\n\nEXISTING');
+  const plain=await f.prepare({systemPrompt});assert.equal(plain.systemPrompt,systemPrompt);assert.equal(plain.systemPromptAppend,'EXISTING');
+ }
 });
 test('contributions are collected from this bus only after actual activation',async t=>{
  const f=fixture(t),owner=join(f.dir,'contributor.mjs'),roles=join(f.dir,'roles'),handlers=new Map();

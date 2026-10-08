@@ -75,6 +75,9 @@ export function registerWorkflowRoles(api: Pick<ExtensionAPI, "events">, registr
       resources: context.capabilities, model: options.model, tools: options.tools, skills: options.skills, extensions: options.extensions,
       contextFiles: options.contextFiles,
     });
+    if (resolved.overrideSystemPrompt && options.systemPrompt !== undefined) {
+      fail("INVALID_METADATA", `Role "${resolved.name}" has overrideSystemPrompt: true and cannot be combined with systemPrompt; use systemPromptAppend for additional instructions`);
+    }
     if (resolved.model && (resolved.model.thinking !== undefined || options.model !== undefined || resolved.definition?.model !== undefined)) {
       configuration.model = `${resolved.model.provider}/${resolved.model.model}${resolved.model.thinking ? `:${resolved.model.thinking}` : ""}`;
     }
@@ -88,7 +91,7 @@ export function registerWorkflowRoles(api: Pick<ExtensionAPI, "events">, registr
       configuration[key] = options[key];
     }
     if (resolved.systemPrompt.mode === "override") {
-      if (options.systemPrompt === undefined) configuration.systemPrompt = resolved.systemPrompt.text;
+      configuration.systemPrompt = resolved.systemPrompt.text;
     } else if (resolved.systemPrompt.text) {
       configuration.systemPromptAppend = [resolved.systemPrompt.text, configuration.systemPromptAppend].filter(Boolean).join("\n\n");
     }
