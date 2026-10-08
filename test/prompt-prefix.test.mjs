@@ -72,7 +72,9 @@ for (const [tool,exposure] of [['workflow','direct'], ['subagents_run','direct']
   assert.equal(second.instructions,first.instructions);assert.equal(third.instructions,first.instructions);
   assert.match(third.instructions,/EXISTING APPEND[\s\S]*Role options \(pi-ext-roles\):[\s\S]*Workflow role descriptions:/);
   assert.ok(third.instructions.includes('agent(prompt, { role: "name" })'));
+  assert.ok(third.instructions.includes('agent.create({ name: "handle", role: "name" })'));
   assert.ok(third.instructions.includes('subagents_run({ prompt, role: "name" })'));
+  assert.ok(third.instructions.includes('Prefer the role defaults; add explicit overrides only when needed.'));
   assert.match(third.instructions,/Explicit call options for these fields take precedence within the allowed resources/);
   const guidance=third.instructions.split('Role options (pi-ext-roles):')[1].split('Workflow role descriptions:')[0];
   assert.doesNotMatch(guidance,/frontmatter|overrideSystemPrompt|systemPromptAppend|forceSystemPrompt/);

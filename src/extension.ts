@@ -13,8 +13,8 @@ export default async function rolesExtension(api: ExtensionAPI): Promise<void> {
       extensionRoleDirectories: collectRoleContributions(api.events, { activeOnly: true }) })).filter(([, definition]) => definition.description);
     if (!roles.length) return;
     const content = `Role options (pi-ext-roles):
-Use agent(prompt, { role: "name" }) in workflow scripts, or subagents_run({ prompt, role: "name" }) for standalone subagents.
-The selected role supplies instructions and defaults for model, tools, skills, extensions, contextFiles and extensionSettings. Explicit call options for these fields take precedence within the allowed resources.
+Use agent(prompt, { role: "name" }) or agent.create({ name: "handle", role: "name" }) in workflow scripts, or subagents_run({ prompt, role: "name" }) for standalone subagents.
+The selected role supplies instructions and defaults for model, tools, skills, extensions, contextFiles and extensionSettings. Explicit call options for these fields take precedence within the allowed resources. Prefer the role defaults; add explicit overrides only when needed.
 
 Workflow role descriptions:
 ${roles.map(([name, definition]) => `- \`${name}\`: ${definition.description}`).join("\n")}`;
