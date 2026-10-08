@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -9,13 +9,20 @@ try {
  const manifest=JSON.parse(readFileSync(join(root,'package.json'),'utf8'));
  assert.equal(manifest.peerDependencies['@earendil-works/pi-coding-agent'],'*');
  assert.equal(manifest.dependencies['@earendil-works/pi-coding-agent'],undefined);
+ assert.equal(manifest.peerDependenciesMeta['pi-extensible-workflows'].optional,true);
+ assert.equal(manifest.dependencies['pi-extensible-workflows'],undefined);
  const packed=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--json','--pack-destination',dir],{cwd:root,encoding:'utf8'}))[0];
- for(const path of ['README.md','LICENSE','RELEASING.md','docs/roles.md','dist/index.d.ts','dist/launcher.d.ts','src/extension.ts','src/cli-tool-bridge.ts','dist/cli-tool-bridge.js',...['developer','oracle','researcher','reviewer','scout'].map(n=>`starter/roles/${n}.md`)])assert.ok(packed.files.some(f=>f.path===path),path);
+ for(const path of ['README.md','LICENSE','RELEASING.md','docs/roles.md','dist/index.d.ts','dist/launcher.d.ts','dist/workflow.js','dist/workflow.d.ts','src/extension.ts','src/cli-tool-bridge.ts','dist/cli-tool-bridge.js',...['developer','oracle','researcher','reviewer','scout'].map(n=>`starter/roles/${n}.md`)])assert.ok(packed.files.some(f=>f.path===path),path);
  assert.equal(manifest.exports['./pi'],undefined);
  for(const path of ['src/pi.ts','dist/pi.js','dist/pi.d.ts']) assert.ok(!packed.files.some(f=>f.path===path),path);
  for(const name of ['a','b']) {
   const prefix=join(dir,name);mkdirSync(prefix);writeFileSync(join(prefix,'package.json'),'{"type":"module","private":true}');
   execFileSync('npm',['install','--ignore-scripts','--no-audit','--no-fund','@earendil-works/pi-coding-agent@1.0.0',join(dir,packed.filename)],{cwd:prefix,stdio:'pipe'});
+ }
+ for(const name of ['a','b']) {
+  const prefix=join(dir,name);assert.equal(existsSync(join(prefix,'node_modules/pi-extensible-workflows')),false);
+  const listed=execFileSync(join(prefix,'node_modules/.bin/pi-role'),['--no-approve','--list'],{cwd:prefix,env:{...process.env,HOME:dir,PI_CODING_AGENT_DIR:join(dir,'agent'),PI_OFFLINE:'1'},encoding:'utf8'});
+  for(const role of ['developer','oracle','researcher','reviewer','scout'])assert.match(listed,new RegExp(`\\b${role}\\b`));
  }
  const pathA=join(dir,'a/node_modules/@piewf/pi-ext-roles'),pathB=join(dir,'b/node_modules/@piewf/pi-ext-roles');
  const a=await import(pathToFileURL(join(pathA,'dist/index.js'))),b=await import(pathToFileURL(join(pathB,'dist/index.js')));
@@ -26,7 +33,7 @@ try {
  assert.equal(Object.keys(a.discoverRoles({cwd:dir,agentDir:join(dir,'agent'),projectTrusted:false})).length,5);
  const sourceBus=pi.createEventBus();
  const loader=new pi.DefaultResourceLoader({cwd:dir,agentDir:join(dir,'agent'),settingsManager:pi.SettingsManager.create(dir,join(dir,'agent'),{projectTrusted:false}),eventBus:sourceBus,noExtensions:true,noSkills:true,noThemes:true,noPromptTemplates:true,additionalExtensionPaths:[join(pathA,'src/extension.ts')]});
- try {await loader.reload();assert.deepEqual(loader.getExtensions().errors,[]);const contributions=b.collectRoleContributions(sourceBus,loader.getExtensions());assert.equal(contributions.length,1);assert.equal(contributions[0].scope,'builtin');assert.equal(Object.keys(b.discoverRoles({cwd:dir,agentDir:join(dir,'agent'),additionalRoleSources:contributions})).length,5);}
+ try {await loader.reload();assert.deepEqual(loader.getExtensions().errors,[]);const contributions=b.collectRoleContributions(sourceBus,loader.getExtensions());assert.equal(contributions.length,0);assert.equal(Object.keys(b.discoverRoles({cwd:dir,agentDir:join(dir,'agent'),additionalRoleSources:contributions})).length,5);}
  finally {loader.getExtensions().runtime.invalidate();sourceBus.clear();}
  const consumerOptions={cwd:dir,agentDir:join(dir,'agent'),projectTrusted:false,useSharedSettings:false,
   definition:{prompt:'ROLE',model:'p/role:low',tools:['!*','read','write'],skills:['!*','kept'],extensions:['!*','builtin:kept'],contextFiles:['global'],extensionSettings:{role:{enabled:true},replace:'role'},overrideSystemPrompt:true},
@@ -47,6 +54,11 @@ try {
  await assert.rejects(import(pathToFileURL(join(pathA,'dist/pi.js'))),{code:'ERR_MODULE_NOT_FOUND'});
  writeFileSync(join(dir,'a/source-contract.ts'),`import { resolveRole, discoverRoles, composeRoleConfiguration, RoleError, canonicalPath, registerRoleContribution, type AgentDefinition, type RoleResolutionOptions, type ResolvedRole, type ModelSpec, type ContextFileScope, type ExtensionSettings, type AgentResourceSelectorSources } from '@piewf/pi-ext-roles';
 import { runPiRole } from '@piewf/pi-ext-roles/launcher';
+import { registerWorkflowRoles, type AgentPreparation } from '@piewf/pi-ext-roles/workflow';
+void registerWorkflowRoles;
+const prepared: AgentPreparation = {tools:[],skills:[],extensions:[],systemPromptAppend:'',settings:{}};void prepared;
+// @ts-expect-error Fallback roles cannot be disabled.
+discoverRoles({cwd:'.',includeFallbackRoles:false});
 const options: RoleResolutionOptions = {cwd:'.',definition:{prompt:'',contextFiles:['cwd'],extensionSettings:{fixture:true}} satisfies AgentDefinition,resources:{tools:['read']},rootTools:['read']};
 const role: ResolvedRole=resolveRole('custom', options);
 const model: ModelSpec | undefined=role.model;
@@ -63,5 +75,5 @@ import {} from '@piewf/pi-ext-roles/pi';
 import { prepareRoleApplication, createRoleRuntime, createRoleSnapshot, restoreRoleSnapshot, roleExtensionSettings, getRoleExtensionSettings, ROLE_SETTINGS_CHANNEL, ROLE_SNAPSHOT_TYPE, type PrepareRoleApplicationOptions, type PreparedRoleApplication, type CreateRoleRuntimeOptions, type RoleSnapshot, type RoleSessionStartEvent } from '@piewf/pi-ext-roles';
 `);
  execFileSync(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--noEmit','--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext',join(dir,'a/source-contract.ts')],{cwd:join(dir,'a'),stdio:'pipe'});
- console.log('PASS: packed pure options, removed runtime exports/artifacts/types, resources/source entrypoint, standalone install, two API copies and consumer typecheck');
+ console.log('PASS: packed pure options, removed runtime exports/artifacts/types, resources/source entrypoint, standalone install and CLI, two API copies and consumer typecheck');
 } finally {rmSync(dir,{recursive:true,force:true});}

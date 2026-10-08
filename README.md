@@ -2,7 +2,7 @@
 
 Reusable Markdown roles for Pi, with a native launcher and independent resolution APIs.
 
-[Roles guide](docs/roles.md) | [Configuration](docs/roles.md#configuration-and-resolution) | [API](docs/roles.md#source-api) | [Native CLI](docs/roles.md#native-cli)
+[Roles guide](docs/roles.md) | [Configuration](docs/roles.md#configuration-and-resolution) | [API](docs/roles.md#source-api) | [Native CLI](docs/roles.md#native-cli) | [Workflow adapter](docs/roles.md#optional-workflow-adapter)
 
 Requires Node.js 22.19 or newer and Pi on `PATH` for the launcher. Roles and extensions are trusted configuration, not a security sandbox. Install only code you trust.
 
@@ -49,6 +49,11 @@ Five model-free fallback roles: `developer`, `oracle`, `researcher`, `reviewer` 
 `pi-role` applies a role and starts one normal Pi process. Native interactive, print/JSON, RPC and session behavior stay with Pi. See [CLI contracts and limits](docs/roles.md#native-cli).
 
 Extensions contribute packaged roles with `registerRoleContribution`. Programmatic consumers use `discoverRoles`, `resolveRole` and `composeRoleConfiguration` to obtain definitions and options, then apply them through their own runtime. This package does not create SDK sessions or own their lifecycle.
+
+For workflows, enable this Pi extension explicitly alongside workflows. Its optional
+preparation hook preserves `agent('task', { role: 'reviewer' })` without making
+workflows understand roles. The independent library and `pi-role` CLI do not
+require workflows. See the [adapter and recovery contracts](docs/roles.md#optional-workflow-adapter).
 
 ## Development
 

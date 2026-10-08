@@ -24,7 +24,7 @@ function fixture(t) {
  const events=()=>existsSync(log)?readFileSync(log,'utf8').trim().split('\n'):[];
  return {dir,cwd,agentDir,owner,settings,save,run,events,contribution};
 }
-test('opt-in discovers configured contributions, honors trust and disabled starter, and leaves defaults pure',t=>{
+test('opt-in discovers configured contributions, honors trust and keeps the five fallbacks, and leaves defaults pure',t=>{
  const f=fixture(t);
  let result=f.run(['--list']);assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/auditor/);assert.match(result.stdout,/scout/);assert.deepEqual(f.events(),[]);
  result=f.run([flag,'--list']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/auditor/);assert.match(result.stdout,/scout/);assert.doesNotMatch(result.stdout,/disabled-role|project-role/);assert.deepEqual(f.events(),['contributor']);
@@ -32,9 +32,9 @@ test('opt-in discovers configured contributions, honors trust and disabled start
  result=f.run([flag,'--approve','--list']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/project-role/);
  result=f.run([flag,'--no-approve','--list']);assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/project-role/);
  f.settings.packages=[{source:root,extensions:[]}];f.save();
- result=f.run([flag,'--list']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/auditor/);assert.doesNotMatch(result.stdout,/scout/);
+ result=f.run([flag,'--list']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/auditor/);assert.match(result.stdout,/scout/);
  result=f.run(['--list']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/scout/);
- result=f.run([flag,'--no-extensions','--list']);assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/auditor|scout/);
+ result=f.run([flag,'--no-extensions','--list']);assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/auditor/);assert.match(result.stdout,/scout/);
  // The launcher flag is stripped without breaking stock Pi delegation or prompt values.
  result=f.run([flag,'--version']);assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/\d+\.\d+/);
  result=f.run(['--system-prompt',flag,'--list']);assert.equal(result.status,0,result.stderr);assert.doesNotMatch(result.stdout,/auditor/);

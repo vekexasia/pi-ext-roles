@@ -93,7 +93,6 @@ export async function runPiRole(argv: readonly string[], cwd = process.cwd(), ag
         extensionLoadFailures = loaded.errors.length > 0;
         for (const error of loaded.errors) process.stderr.write(`pi-role: warning: Extension ${error.path}: ${error.error}\n`);
         discovery.extensionRoleDirectories = collectRoleContributions(eventBus, loaded);
-        discovery.includeFallbackRoles = false;
       } finally { loader.getExtensions().runtime.invalidate(); eventBus.clear(); }
     }
     if (list || help) {

@@ -44,6 +44,10 @@
     "./launcher": {
       "types": "./dist/launcher.d.ts",
       "import": "./dist/launcher.js"
+    },
+    "./workflow": {
+      "types": "./dist/workflow.d.ts",
+      "import": "./dist/workflow.js"
     }
   },
   "bin": {
@@ -74,11 +78,17 @@
     "minimatch": "10.2.4"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "pi-extensible-workflows": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.0.0",
     "@types/node": "22.19.15",
     "typescript": "5.9.3"
+  },
+  "peerDependenciesMeta": {
+    "pi-extensible-workflows": {
+      "optional": true
+    }
   }
 }
