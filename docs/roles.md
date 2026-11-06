@@ -21,6 +21,7 @@ prompt; `overrideSystemPrompt: true` selects replacement mode (see native CLI
 limits below). Roles are trusted configuration, not a sandbox. Run
 `pi-role code-reader` or `pi-role code-reader -p "Explain the startup path"`.
 Use `pi-role --list` to inspect discovered names without loading extension factories. To try configured extension contributions, use `pi-role --discover-extension-roles --list`.
+Use `pi-role reviewer --diagnose` (or `pi-role --diagnose reviewer`) for a read-only JSON report of the role source, provenance, prompt mode, model declaration, selectors, context scopes, and fallback status. It does not print the prompt body or extension settings and does not start Pi. Use `--identify` when raw role content is intentionally required.
 The fallback roles deliberately have no model: select one through native Pi,
 `--model provider/model:thinking`, or a role/shared alias.
 
@@ -42,13 +43,17 @@ Replace `provider/model` with your actual provider and model ID, then set
 | `description` | Discovery description |
 | `model` | Concrete model reference or configured alias |
 | `tools`, `skills`, `extensions` | Ordered selectors over supplied/discovered candidates |
+| `mcp` | Ordered selectors over MCP server names; its final selection filters MCP tools |
 | `extensionSettings` | JSON extension namespaces returned to programmatic consumers; ignored by CLI |
 | `overrideSystemPrompt` | Replace rather than append the role body |
 | `contextFiles` | Context scopes: `global`, `project`, `cwd`; `[]` means none |
 
 Selectors are operations: `['!*', 'read', 'grep']` clears the loadout and adds those
-candidates; `[]` changes nothing; later positive patterns can re-enable candidates
-within consumer ceilings. Relative extension selectors resolve from the role file.
+candidates; `[]` changes nothing for tools, skills and extensions; later positive
+patterns can re-enable candidates within consumer ceilings. For `mcp`, `[]` means
+no MCP server tools, while `['!*']` also clears the selection. The six selector
+positions are `defaults.global`, `defaults.project`, `global`, `project`, `role`,
+and `call`, in that order. Relative extension selectors resolve from the role file.
 There is no role inheritance. Invalid role metadata blocks discovery instead of
 silently skipping the role.
 
@@ -153,7 +158,10 @@ standalone-subagent tools are available, preserving an existing append. It never
 forces the complete prompt. Descriptions use Pi's configured agent directory
 (`PI_CODING_AGENT_DIR`, or its default), this runtime's active contributors and
 its concrete project trust decision. This preserves dynamic tool transcript
-deltas and the provider prefix (#311).
+deltas and the provider prefix (#311). The adapter cannot pass native
+`--exclude-tools` arguments to its consumer: MCP selectors are present in the
+prepared selector layers, but registry-level MCP enforcement remains the
+consumer's responsibility.
 
 New workflow runs freeze the generic prepared configuration before dispatch,
 including resolved model, plugin instructions, selectors, context scopes and
@@ -171,9 +179,9 @@ relaunch resolves live role files, while session storage stays native Pi's.
 
 ## Configuration and resolution
 
-Global: `~/.pi/agent/pi-ext-roles/{settings.json,roles/*.md}`. Authorized project: `<cwd>/.pi/pi-ext-roles/{settings.json,roles/*.md}`. Pi's configured agent directory is respected. Settings support `modelAliases`, ordered `tools`, `skills`, `extensions` selectors and JSON `extensionSettings` namespaces. Project aliases replace the entire global alias map, including `{}`. Explicit consumer aliases overlay that effective map.
+Global: `~/.pi/agent/pi-ext-roles/{settings.json,roles/*.md}`. Authorized project: `<cwd>/.pi/pi-ext-roles/{settings.json,roles/*.md}`. Pi's configured agent directory is respected. Settings support `modelAliases`, ordered `tools`, `skills`, `extensions`, `mcp` selectors and JSON `extensionSettings` namespaces. Project aliases replace the entire global alias map, including `{}`. Explicit consumer aliases overlay that effective map.
 
-Frontmatter supports `model`, `description`, `tools`, `skills`, `extensions`, `extensionSettings`, `overrideSystemPrompt` (also `override_system_prompt` and `is_system_prompt`) and `contextFiles: [global, project, cwd]`. Physical role models retain the `provider/model:thinking` contract. Aliases may supply thinking. Standalone `thinking` and `disabledAgentResources` metadata are rejected. No inheritance.
+Frontmatter supports `model`, `description`, `tools`, `skills`, `extensions`, `mcp`, `extensionSettings`, `overrideSystemPrompt` (also `override_system_prompt` and `is_system_prompt`) and `contextFiles: [global, project, cwd]`. Physical role models retain the `provider/model:thinking` contract. Aliases may supply thinking. Standalone `thinking` and `disabledAgentResources` metadata are rejected. No inheritance.
 
 API discovery precedence: fallback < contributor < global < authorized project. Default CLI discovery is fallback < global < authorized project; it never runs contributor factories to discover roles. Experimental `--discover-extension-roles` enables contributor discovery while retaining all five unconditional fallback roles. `additionalRoleSources` accepts `{path, scope, priority, owner?, extension?}`. Larger priority wins within a scope; standard global/project directories have priority 100, permitting low-priority compatibility sources without teaching this package their names. Contributor name collisions fail. Missing user directories are allowed; missing contributor directories fail. Symlinks use canonical filesystem identity. Definitions carry serializable `provenance`, preserving relative extension selectors across clones and API copies.
 
@@ -234,9 +242,9 @@ Enabled/authorized resource candidates come from pure package metadata. Skills a
 
 ### Tool contract
 
-Role/shared `tools` selectors control **model-declared loadout**, not a universal permission/security sandbox. Registered deferred/codemode tools can remain callable through `ctx.executeTool()` even when not declared; hidden/model-only tools have Pi's native exposure semantics. Trusted extensions retain native capabilities.
+Role/shared `tools` selectors control **model-declared loadout**, not a universal permission/security sandbox. The `mcp` selector appends a final tool layer: selected server `server-name` becomes `mcp__server_name__*`, and an empty selection becomes `!mcp__*`. Native launches additionally read global `<agentDir>/mcp.json` and, when the project is trusted, `<cwd>/.pi/mcp.json`; project entries replace global entries, disabled entries are omitted, and the complement of the selected server names is passed as Pi's hard `--exclude-tools` registry filter. Configured MCP servers still connect and still appear in the `mcp_servers` system-prompt section because Pi has no per-server session switch. The workflow adapter cannot pass this native flag and only preserves the selector layer for its consumer to apply. Registered deferred/codemode tools can remain callable through `ctx.executeTool()` when a consumer applies only a model loadout; hidden/model-only tools have Pi's native exposure semantics. Trusted extensions retain native capabilities.
 
-Only when tool selectors need applying, the final Pi receives an explicit `--extension` for the packaged `dist/cli-tool-bridge.js`. Its private string flag carries four validated ordered selector layers. The bridge reuses selector validation/selection, obtains native `pi.getAllTools()`, and applies the loadout on `session_start` (including reload) and before agent turns. Malformed payloads visibly terminate startup with no open/default loadout. The bridge owns no global registry, provider/workflow registration or persisted role SDK snapshot. Native reload propagates runtime flag values.
+Only when tool selectors need applying, the final Pi receives an explicit `--extension` for the packaged `dist/cli-tool-bridge.js`. Its private string flag carries the resolved validated ordered selector layers. The bridge reuses selector validation/selection, obtains native `pi.getAllTools()`, and applies the loadout on `session_start` (including reload) and before agent turns. Malformed payloads visibly terminate startup with no open/default loadout. The bridge owns no global registry, provider/workflow registration or persisted role SDK snapshot. Native reload propagates runtime flag values.
 
 Explicit native `--tools` overrides role/shared loadout and is a hard allowlist ceiling, `--exclude-tools` is a hard exclusion, `--no-tools` absolutely wins, and `--no-builtin-tools` excludes builtin names while permitting eligible extension tools. Pi 1.0.x internally gives `tools` priority over `noTools` and treats `no-builtin-tools` as an initial loadout only. The selected launcher therefore appends an empty native `--tools` for no-tools, or merged builtin exclusions for no-builtin-tools. Native registry filtering, not merely a UI list, prevents reenabling excluded tools at startup, reload or later turns. In the tested 1.0.0/1.0.2 source, `_refreshToolRegistry` (the registry builder) filters definitions and callable `_toolRegistry` entries using `_isAllowedTool`; no-tools also empties `getAllTools()` in these versions. Enumeration alone is not a permission check.
 

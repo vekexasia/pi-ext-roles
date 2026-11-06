@@ -27,6 +27,7 @@ Upgrading from the old workflow CLI? See the [migration guide](docs/roles.md#mig
 ```sh
 pi-role --list
 pi-role reviewer --identify   # print role file path and content
+pi-role reviewer --diagnose   # print resolved role metadata as JSON
 pi-role reviewer
 pi-role scout -p "Where is the retry logic?"
 ```
@@ -42,6 +43,8 @@ Trace the relevant code and report concrete findings. Do not edit files.
 ```
 
 Then run `pi-role code-reader`. Choose a model in Pi, with `--model`, or in the role file. See the [roles guide](docs/roles.md#write-your-first-role) for aliases, resource selectors and project roles.
+
+The optional `mcp` selector scopes MCP tools by server, for example `mcp: [codegraph]`; `mcp: []` or `mcp: ['!*']` exposes no MCP tools. Native launches enforce the selected scope with Pi's hard `--exclude-tools` registry filter; selector layers apply in this order: `defaults.global`, `defaults.project`, `global`, `project`, `role`, `call`. Configured MCP servers still connect and remain listed in Pi's `mcp_servers` system-prompt section because Pi has no per-server session switch. The optional workflow adapter preserves the selector layer in prepared configuration, but cannot pass native registry exclusions to its consumer.
 
 ## Included capabilities
 

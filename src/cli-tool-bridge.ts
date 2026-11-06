@@ -6,7 +6,7 @@ export const TOOL_LAYERS_FLAG = "pi-role-tool-layers";
 export function parseToolLayers(value: unknown): readonly (readonly string[] | undefined)[] {
   if (typeof value !== "string") throw new Error("Missing tool selector payload");
   const parsed: unknown = JSON.parse(value);
-  if (!Array.isArray(parsed) || parsed.length !== 4) throw new Error("Invalid tool selector layers");
+  if (!Array.isArray(parsed) || parsed.length < 4) throw new Error("Invalid tool selector layers");
   return parsed.map(layer => layer === null ? undefined : validateSelectorList(layer, TOOL_LAYERS_FLAG, "tools"));
 }
 

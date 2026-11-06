@@ -11,13 +11,14 @@ try {
  assert.equal(manifest.dependencies['@earendil-works/pi-coding-agent'],undefined);
  assert.equal(manifest.peerDependenciesMeta['pi-extensible-workflows'].optional,true);
  assert.equal(manifest.dependencies['pi-extensible-workflows'],undefined);
- const packed=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--json','--pack-destination',dir],{cwd:root,encoding:'utf8'}))[0];
+ const packedResult=JSON.parse(execFileSync('npm',['pack','--ignore-scripts','--json','--pack-destination',dir],{cwd:root,encoding:'utf8'}));
+ const packed=Array.isArray(packedResult) ? packedResult[0] : packedResult.files ? packedResult : Object.values(packedResult)[0];
  for(const path of ['README.md','LICENSE','RELEASING.md','docs/roles.md','dist/index.d.ts','dist/launcher.d.ts','dist/workflow.js','dist/workflow.d.ts','src/extension.ts','src/cli-tool-bridge.ts','dist/cli-tool-bridge.js',...['developer','oracle','researcher','reviewer','scout'].map(n=>`starter/roles/${n}.md`)])assert.ok(packed.files.some(f=>f.path===path),path);
  assert.equal(manifest.exports['./pi'],undefined);
  for(const path of ['src/pi.ts','dist/pi.js','dist/pi.d.ts']) assert.ok(!packed.files.some(f=>f.path===path),path);
  for(const name of ['a','b']) {
   const prefix=join(dir,name);mkdirSync(prefix);writeFileSync(join(prefix,'package.json'),'{"type":"module","private":true}');
-  execFileSync('npm',['install','--ignore-scripts','--no-audit','--no-fund','@earendil-works/pi-coding-agent@1.0.0',join(dir,packed.filename)],{cwd:prefix,stdio:'pipe'});
+  execFileSync('npm',['install','--ignore-scripts','--no-audit','--no-fund','@earendil-works/pi-coding-agent@1.0.0','@earendil-works/pi-codemode@1.0.0',join(dir,packed.filename)],{cwd:prefix,stdio:'pipe'});
  }
  for(const name of ['a','b']) {
   const prefix=join(dir,name);assert.equal(existsSync(join(prefix,'node_modules/pi-extensible-workflows')),false);

@@ -25,7 +25,7 @@ function normalizedResourcePath(value: string, settingsPath: string): string {
   }
   return canonicalPath(resolved);
 }
-export function validateSelectorList(value: unknown, path: string, kind: "skills" | "extensions" | "tools", errorCode: "INVALID_SETTINGS" | "INVALID_METADATA" = "INVALID_SETTINGS", normalizeExtensions = true): readonly string[] | undefined {
+export function validateSelectorList(value: unknown, path: string, kind: "skills" | "extensions" | "tools" | "mcp", errorCode: "INVALID_SETTINGS" | "INVALID_METADATA" = "INVALID_SETTINGS", normalizeExtensions = true): readonly string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) fail(errorCode, `${path}.${kind} must be an array`);
   const normalized: string[] = [];
@@ -62,9 +62,9 @@ export function loadSettings(path = roleSettingsPath()): Readonly<RoleSettings> 
   try { raw = JSON.parse(readFileSync(path, "utf8")); }
   catch (error) { if (isNodeError(error, "ENOENT")) return Object.freeze({}); fail("INVALID_SETTINGS", `${path}: ${errorText(error)}`); }
   if (!object(raw)) fail("INVALID_SETTINGS", `${path} must be an object`);
-  for (const key of Object.keys(raw)) if (!["modelAliases", "tools", "skills", "extensions", "extensionSettings"].includes(key)) fail("INVALID_SETTINGS", `${path}: unknown setting ${key}`);
+  for (const key of Object.keys(raw)) if (!["modelAliases", "tools", "skills", "extensions", "mcp", "extensionSettings"].includes(key)) fail("INVALID_SETTINGS", `${path}: unknown setting ${key}`);
   const result: RoleSettings = {};
-  for (const kind of ["tools", "skills", "extensions"] as const) {
+  for (const kind of ["tools", "skills", "extensions", "mcp"] as const) {
     const selectors = validateSelectorList(raw[kind], path, kind);
     if (selectors !== undefined) result[kind] = selectors;
   }
@@ -79,13 +79,13 @@ export function resolveRoleSettings(cwd: string, projectTrusted: boolean, global
   const project = projectTrusted ? loadSettings(projectSettingsPath) : Object.freeze({}) as Readonly<RoleSettings>;
   const has = (key: keyof RoleSettings) => Object.prototype.hasOwnProperty.call(project, key);
   const effective: RoleSettings = { ...global, ...project };
-  for (const kind of ["skills", "extensions", "tools"] as const) if (global[kind] !== undefined || project[kind] !== undefined) effective[kind] = [...(global[kind] ?? []), ...(project[kind] ?? [])];
+  for (const kind of ["skills", "extensions", "tools", "mcp"] as const) if (global[kind] !== undefined || project[kind] !== undefined) effective[kind] = [...(global[kind] ?? []), ...(project[kind] ?? [])];
   effective.extensionSettings = mergeExtensionSettings(global.extensionSettings, project.extensionSettings);
-  const sources = Object.fromEntries(["modelAliases", "skills", "extensions", "tools", "extensionSettings"].map(key => [key, has(key as keyof RoleSettings) ? projectSettingsPath : globalSettingsPath]));
+  const sources = Object.fromEntries(["modelAliases", "skills", "extensions", "tools", "mcp", "extensionSettings"].map(key => [key, has(key as keyof RoleSettings) ? projectSettingsPath : globalSettingsPath]));
   return { globalSettingsPath, projectSettingsPath, projectTrusted, global, project, effective: deepFreeze(effective), sources };
 }
 function selectors(settings: RoleSettings): AgentResourceSelectors {
-  return Object.fromEntries(["skills", "extensions", "tools"].flatMap(key => settings[key as keyof AgentResourceSelectors] === undefined ? [] : [[key, settings[key as keyof AgentResourceSelectors]]])) as AgentResourceSelectors;
+  return Object.fromEntries(["skills", "extensions", "tools", "mcp"].flatMap(key => settings[key as keyof AgentResourceSelectors] === undefined ? [] : [[key, settings[key as keyof AgentResourceSelectors]]])) as AgentResourceSelectors;
 }
 type RoleConfigurationOptions = { cwd: string; agentDir?: string; projectTrusted?: boolean; settingsPath?: string; selectorSources?: AgentResourceSelectorSources; modelAliases?: Readonly<Record<string, string>>; useSharedSettings?: boolean };
 type RoleConfiguration = { settings: ReturnType<typeof resolveRoleSettings> | undefined; selectorSources: AgentResourceSelectorSources; modelAliases: Readonly<Record<string, string>> };

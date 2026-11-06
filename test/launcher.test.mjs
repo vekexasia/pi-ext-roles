@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,12 +41,32 @@ test('real native launcher empty headless mode, ignored settings, tool ceiling, 
  const listed=run(['--list']);assert.equal(listed.status,0,listed.stderr);assert.match(listed.stdout,/fixture/);assert.match(listed.stdout,/scout/);
  const normal=run(['--version']);assert.equal(normal.status,0,normal.stderr);assert.equal(normal.stdout,spawnSync('pi',['--version'],{cwd:f.cwd,env:f.env,encoding:'utf8'}).stdout);
 });
+test('native launcher emits hard MCP exclusions for empty and selected role scopes',t=>{
+ const f=fixture(t),bin=join(f.dir,'bin'),fakePi=join(bin,'pi'),argsPath=join(f.dir,'argv.json');
+ put(fakePi,`#!/usr/bin/env node
+const {writeFileSync}=require('node:fs');writeFileSync(${JSON.stringify(argsPath)},JSON.stringify(process.argv.slice(2)));`);chmodSync(fakePi,0o755);f.env.PATH=`${bin}:${process.env.PATH}`;
+ put(join(f.agentDir,'mcp.json'),JSON.stringify({mcpServers:{codegraph:{command:'codegraph'},'other-server':{command:'other'},disabled:{command:'disabled',enabled:false}}}));
+ const run=()=>spawnSync(process.execPath,[cli,'fixture'],{cwd:f.cwd,env:f.env,encoding:'utf8',timeout:20000});
+ put(join(f.agentDir,'pi-ext-roles/roles/fixture.md'),'---\nmcp: []\n---\n');assert.equal(run().status,0);assert.deepEqual(JSON.parse(readFileSync(argsPath,'utf8')),['--extension',join(root,'dist/cli-tool-bridge.js'),'--pi-role-tool-layers','[null,null,null,null,["!mcp__*"]]','--exclude-tools','mcp__*']);
+ put(join(f.agentDir,'pi-ext-roles/roles/fixture.md'),'---\nmcp: [codegraph]\n---\n');assert.equal(run().status,0);assert.deepEqual(JSON.parse(readFileSync(argsPath,'utf8')),['--extension',join(root,'dist/cli-tool-bridge.js'),'--pi-role-tool-layers','[null,null,null,null,["!mcp__*","mcp__codegraph__*"]]','--exclude-tools','mcp__other_server__*']);
+ put(join(f.cwd,'.pi/mcp.json'),JSON.stringify({mcpServers:{codegraph:{command:'project-codegraph',enabled:false},'project-server':{command:'project'}}}));put(join(f.agentDir,'pi-ext-roles/roles/fixture.md'),'---\nmcp: [project-server]\n---\n');assert.equal(spawnSync(process.execPath,[cli,'fixture','--approve'],{cwd:f.cwd,env:f.env,encoding:'utf8',timeout:20000}).status,0);assert.deepEqual(JSON.parse(readFileSync(argsPath,'utf8')),['--approve','--extension',join(root,'dist/cli-tool-bridge.js'),'--pi-role-tool-layers','[null,null,null,null,["!mcp__*","mcp__project_server__*"]]','--exclude-tools','mcp__other_server__*']);
+});
+test('read-only role diagnostics emit metadata without prompt bodies, settings, factories, or Pi startup',t=>{
+ const f=fixture(t),run=args=>spawnSync(process.execPath,[cli,...args],{cwd:f.cwd,env:f.env,encoding:'utf8',timeout:20000});
+ put(join(f.agentDir,'pi-ext-roles/roles/fixture.md'),'---\nmodel: fixture/model:medium\ncontextFiles: []\nmcp: [codegraph]\n---\nCLI_ROLE');
+ const diagnosed=run(['fixture','--diagnose']);assert.equal(diagnosed.status,0,diagnosed.stderr);assert.equal(diagnosed.stderr,'');
+ const report=JSON.parse(diagnosed.stdout);
+ assert.deepEqual(report,{name:'fixture',source:{path:join(f.agentDir,'pi-ext-roles/roles/fixture.md'),scope:'global',priority:100},packagedFallback:false,model:'fixture/model:medium',promptMode:'append',selectors:{mcp:['codegraph']},contextFiles:[]});
+ assert.equal('prompt' in report,false);assert.equal('extensionSettings' in report,false);assert.deepEqual(f.events(),[]);
+ const fallback=JSON.parse(run(['--diagnose','scout']).stdout);assert.equal(fallback.name,'scout');assert.equal(fallback.packagedFallback,true);assert.equal(fallback.promptMode,'append');assert.equal(fallback.model,undefined);
+ const missing=run(['missing-role','--diagnose']);assert.equal(missing.status,1);assert.match(missing.stderr,/Unknown agent role: missing-role/);assert.deepEqual(f.events(),[]);
+});
 test('real native launcher RPC get_state and native abrupt SIGINT/SIGTERM/SIGHUP exits',async t=>{
  for(const [signal,expectedCode] of [['SIGINT',130],['SIGTERM',143],['SIGHUP',129]]) {
  const f=fixture(t),child=spawn(process.execPath,[cli,'fixture','--mode','rpc','--no-session'],{cwd:f.cwd,env:f.env,stdio:['pipe','pipe','pipe']});
  t.after(()=>{if(child.exitCode===null)child.kill('SIGKILL');});
  let output='',stderr='';child.stderr.on('data',d=>stderr+=d);
- const response=new Promise((resolve,reject)=>{child.stdout.on('data',chunk=>{output+=chunk;for(const line of output.split('\n')){try{const response=JSON.parse(line);if(response.id==='state')resolve(response);}catch{}}});child.on('error',reject);child.on('exit',(code)=>{if(!output.includes('"id":"state"'))reject(new Error(`RPC exited ${code}: ${stderr}`));});});
+ const response=new Promise((resolve,reject)=>{child.stdout.on('data',chunk=>{output+=chunk;for(const line of output.split('\n')){try{const response=JSON.parse(line);if(response.id==='state')resolve(response);}catch{continue;}}});child.on('error',reject);child.on('exit',(code)=>{if(!output.includes('"id":"state"'))reject(new Error(`RPC exited ${code}: ${stderr}`));});});
  const exited=new Promise(resolve=>child.on('exit',(code,signal)=>resolve({code,signal})));
  child.stdin.write(JSON.stringify({id:'state',type:'get_state'})+'\n');
  const state=await response;assert.equal(state.success,true);assert.equal(state.data.model.provider,'fixture');
@@ -96,7 +116,7 @@ api.on('session_shutdown'`));
   const child=spawn(process.execPath,[cli,'fixture','--mode','rpc','--no-session',...extra],{cwd:f.cwd,env:f.env,stdio:['pipe','pipe','pipe']});
   t.after(()=>{if(child.exitCode===null)child.kill('SIGKILL');});
   const pending=new Map();let buffer='',stderr='';child.stderr.on('data',d=>stderr+=d);
-  child.stdout.on('data',d=>{buffer+=d;let index;while((index=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);try{const event=JSON.parse(line);pending.get(event.message==='reloaded'?'reloaded':event.id)?.(event);}catch{}}});
+  child.stdout.on('data',d=>{buffer+=d;let index;while((index=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);try{const event=JSON.parse(line);pending.get(event.message==='reloaded'?'reloaded':event.id)?.(event);}catch{continue;}}});
   const ask=command=>new Promise(resolve=>{pending.set(command.id,resolve);child.stdin.write(JSON.stringify(command)+'\n');});
   assert.equal((await ask({id:'initial',type:'get_state'})).success,true);
   const reloaded=new Promise(resolve=>pending.set('reloaded',resolve));

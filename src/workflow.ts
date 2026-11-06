@@ -25,6 +25,7 @@ export interface AgentPreparationContext {
     tools?: readonly string[];
     skills?: readonly string[];
     extensions?: readonly string[];
+    mcp?: readonly string[];
     contextFiles?: readonly ContextFileScope[];
     [key: string]: unknown;
   }>;
@@ -94,7 +95,7 @@ export function registerWorkflowRoles(api: Pick<ExtensionAPI, "events">, registr
       ...(definition === undefined ? {} : { definition }),
       useSharedSettings: false, selectorSources: composed.selectorSources, modelAliases,
       rootModel: context.defaults.model, knownModels: context.knownModels, availableModels: context.availableModels,
-      resources: context.capabilities, model: options.model ?? builtinAlias, tools: options.tools, skills: options.skills, extensions: options.extensions,
+      resources: context.capabilities, model: options.model ?? builtinAlias, tools: options.tools, skills: options.skills, extensions: options.extensions, mcp: options.mcp,
       contextFiles: options.contextFiles,
     });
     if (resolved.overrideSystemPrompt && options.systemPrompt !== undefined) {

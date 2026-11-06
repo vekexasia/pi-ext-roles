@@ -8,14 +8,14 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type ExtensionSettings = Record<string, JsonValue>;
 export interface ModelSpec { provider: string; model: string; thinking?: ThinkingLevel }
-export interface AgentResourceSelectors { skills?: readonly string[]; extensions?: readonly string[]; tools?: readonly string[] }
-export interface AgentResourceSelectorSet { skills: readonly string[]; extensions: readonly string[]; tools?: readonly string[] }
+export interface AgentResourceSelectors { skills?: readonly string[]; extensions?: readonly string[]; tools?: readonly string[]; mcp?: readonly string[] }
+export interface AgentResourceSelectorSet { skills: readonly string[]; extensions: readonly string[]; tools?: readonly string[]; mcp?: readonly string[] }
 export interface AgentResourceSelectorSources { global: AgentResourceSelectors; project: AgentResourceSelectors; role?: AgentResourceSelectors; call?: AgentResourceSelectors; defaults?: { global: AgentResourceSelectors; project: AgentResourceSelectors } }
 export const CONTEXT_FILE_SCOPES = ["global", "project", "cwd"] as const;
 export type ContextFileScope = (typeof CONTEXT_FILE_SCOPES)[number];
 export function isContextFileScope(value: unknown): value is ContextFileScope { return CONTEXT_FILE_SCOPES.some((scope) => scope === value); }
 export interface RoleProvenance { path: string; scope?: RoleSourceScope; owner?: string; priority?: number }
-export interface AgentDefinition { prompt?: string; description?: string; model?: string; thinking?: NonNullable<ModelSpec["thinking"]>; tools?: readonly string[]; skills?: readonly string[]; extensions?: readonly string[]; overrideSystemPrompt?: boolean; contextFiles?: readonly ContextFileScope[]; extensionSettings?: Readonly<ExtensionSettings>; provenance?: RoleProvenance }
+export interface AgentDefinition { prompt?: string; description?: string; model?: string; thinking?: NonNullable<ModelSpec["thinking"]>; tools?: readonly string[]; skills?: readonly string[]; extensions?: readonly string[]; mcp?: readonly string[]; overrideSystemPrompt?: boolean; contextFiles?: readonly ContextFileScope[]; extensionSettings?: Readonly<ExtensionSettings>; provenance?: RoleProvenance }
 export type RoleDefinition = AgentDefinition;
 export type ResourceSelectors = AgentResourceSelectors;
 export type ResourceSelectorSources = AgentResourceSelectorSources;

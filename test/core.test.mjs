@@ -34,6 +34,26 @@ test('selectors are ordered operations, [] and !* differ, candidates are the cei
  assert.deepEqual(resolveRole('custom',{...f,definition:{tools:['!*','read','write']},rootTools:new Set(['read']),tools:['*']}).tools,['read']);
  assert.throws(()=>resolveRole('custom',{...f,definition:{},rootTools:['read'],effectiveTools:['write']}),e=>e.code==='UNKNOWN_TOOL');
 });
+test('per-role MCP selectors append the derived tool layer without affecting declared unmatched tools',t=>{
+ const f=fixture(t), mcp=['serverA','serverB','server-one'], tools=['mcp__serverA__read','mcp__serverB__write','mcp__server_one__list','read'];
+ const base={...f,resources:{mcp,tools}};
+ const one=resolveRole('custom',{...base,definition:{mcp:['serverA']}});
+ assert.deepEqual(one.selectedMcp,['serverA']);
+ assert.deepEqual(one.selectorLayers.tools.at(-1),['!mcp__*','mcp__serverA__*']);
+ assert.deepEqual(one.tools,['mcp__serverA__read','read']);
+ assert.deepEqual(one.unmatchedTools,[]);
+ const none=resolveRole('custom',{...base,definition:{mcp:[]}});
+ assert.deepEqual(none.selectedMcp,[]);
+ assert.deepEqual(none.selectorLayers.tools.at(-1),['!mcp__*']);
+ assert.deepEqual(none.tools,['read']);
+ const pattern=resolveRole('custom',{...base,definition:{mcp:['!*','server*','!serverA']}});
+ assert.deepEqual(pattern.selectedMcp,['serverB','server-one']);
+ assert.deepEqual(pattern.selectorLayers.tools.at(-1),['!mcp__*','mcp__serverB__*','mcp__server_one__*']);
+ assert.deepEqual(pattern.tools,['mcp__serverB__write','mcp__server_one__list','read']);
+ const omitted=resolveRole('custom',{...base,definition:{}});
+ assert.deepEqual(omitted.selectorLayers.tools,[undefined,undefined,undefined,undefined]);
+ assert.equal(omitted.selectorLayers.tools.some(layer=>layer?.some(pattern=>pattern.startsWith('!mcp__'))),false);
+});
 test('serialized role provenance, symlinks, generic scoped sources and deterministic precedence',t=>{
  const f=fixture(t),low=join(f.dir,'low'),high=join(f.dir,'high');
  put(join(low,'a.md'),'---\nextensions: ["./tool.js"]\n---\nLOW');put(join(high,'a.md'),'HIGH');
@@ -48,7 +68,12 @@ test('serialized role provenance, symlinks, generic scoped sources and determini
 });
 test('strict metadata, JSON validation, alias cycles and effective model override rejection',t=>{
  const f=fixture(t);
- for(const raw of ['---\nmodel: p/m\n---\nx','---\ntools: false\n---\nx','---\noverrideSystemPrompt: 2\n---\nx','---\nextensionSettings: []\n---\nx','---\nfoo: 1']) assert.throws(()=>parseRoleMarkdown(raw,true));
+ assert.deepEqual(parseRoleMarkdown('---\nmcp: [serverA]\n---\nx',false).mcp,['serverA']);
+ assert.deepEqual(parseRoleMarkdown('---\nmcp: [serverA]\n---\nx',true).mcp,['serverA']);
+ for(const raw of ['---\nmodel: p/m\n---\nx','---\ntools: false\n---\nx','---\nmcp: false\n---\nx','---\nmcp: [\"\"]\n---\nx','---\noverrideSystemPrompt: 2\n---\nx','---\nextensionSettings: []\n---\nx','---\nfoo: 1']) assert.throws(()=>parseRoleMarkdown(raw,true));
+ put(roleSettingsPath(f.agentDir),JSON.stringify({mcp:['']}));
+ assert.throws(()=>composeRoleConfiguration(f),e=>e.code==='INVALID_SETTINGS');
+ put(roleSettingsPath(f.agentDir),JSON.stringify({}));
  assert.deepEqual(parseRoleMarkdown('plain'),{prompt:'plain'});
  assert.deepEqual(parseRoleMarkdown('---\nextensionSettings: {"custom":null}\n---\nx').extensionSettings,{custom:null});
  assert.throws(()=>validateModelAliases({a:'b',b:'a'}),e=>e.code==='CONFIG_ERROR');

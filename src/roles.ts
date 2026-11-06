@@ -30,7 +30,7 @@ export function parseRoleMarkdown(content: string, strict = false, rolePath?: st
     if (end < 0) return { prompt: content };
     const meta: Record<string, string> = {};
     for (const line of content.slice(4, end).split("\n")) {
-      const match = /^(model|tools|skills|extensions|description|overrideSystemPrompt|override_system_prompt|is_system_prompt|contextFiles|extensionSettings|disabledAgentResources|thinking)\s*:\s*(.+)$/.exec(line.trim());
+      const match = /^(model|tools|skills|extensions|mcp|description|overrideSystemPrompt|override_system_prompt|is_system_prompt|contextFiles|extensionSettings|disabledAgentResources|thinking)\s*:\s*(.+)$/.exec(line.trim());
       if (match?.[1] === "disabledAgentResources") fail("INVALID_METADATA", "disabledAgentResources is no longer supported; use skills, extensions, and tools selectors");
       if (match?.[1] === "thinking") fail("INVALID_METADATA", "Role thinking is not supported; put it on model as provider/model:thinking");
       if (match?.[1] && match[2]) meta[match[1]] = match[2].trim();
@@ -40,6 +40,7 @@ export function parseRoleMarkdown(content: string, strict = false, rolePath?: st
     const tools = parseList(meta.tools);
     const skills = parseList(meta.skills);
     const extensions = parseList(meta.extensions);
+    const mcp = validateSelectorList(parseList(meta.mcp), rolePath ?? "<role>", "mcp", "INVALID_METADATA", false);
     let extensionSettings: unknown;
     if (meta.extensionSettings !== undefined) {
       try { extensionSettings = JSON.parse(meta.extensionSettings) as unknown; }
@@ -57,6 +58,7 @@ export function parseRoleMarkdown(content: string, strict = false, rolePath?: st
     if (tools) definition.tools = tools;
     if (skills) definition.skills = skills;
     if (extensions) definition.extensions = extensions;
+    if (mcp) definition.mcp = mcp;
     if (normalizedExtensionSettings !== undefined) definition.extensionSettings = normalizedExtensionSettings;
     const overrideSystemPrompt = meta.overrideSystemPrompt ?? meta.override_system_prompt ?? meta.is_system_prompt;
     const contextFiles = meta.contextFiles ? meta.contextFiles.replace(/^\[|\]$/g, "").split(",").map((scope) => unquote(scope.trim())).filter(Boolean) : undefined;
@@ -72,7 +74,7 @@ export function parseRoleMarkdown(content: string, strict = false, rolePath?: st
   try { parsed = parseFrontmatter(content); }
   catch (error) { fail("INVALID_METADATA", `Invalid role frontmatter: ${errorText(error)}`); }
   if (!object(parsed.frontmatter)) fail("INVALID_METADATA", "Role frontmatter must be an object");
-  const { model, tools, skills, extensions, extensionSettings, description, contextFiles } = parsed.frontmatter;
+  const { model, tools, skills, extensions, mcp, extensionSettings, description, contextFiles } = parsed.frontmatter;
   if (Object.prototype.hasOwnProperty.call(parsed.frontmatter, "disabledAgentResources")) fail("INVALID_METADATA", "disabledAgentResources is no longer supported; use skills, extensions, and tools selectors");
   if (Object.prototype.hasOwnProperty.call(parsed.frontmatter, "thinking")) fail("INVALID_METADATA", "Role thinking is not supported; put it on model as provider/model:thinking");
   const overrideSystemPrompt = parsed.frontmatter.overrideSystemPrompt ?? parsed.frontmatter.override_system_prompt ?? parsed.frontmatter.is_system_prompt;
@@ -84,6 +86,7 @@ export function parseRoleMarkdown(content: string, strict = false, rolePath?: st
   const normalizedTools = validateSelectorList(tools, rolePathValue, "tools", "INVALID_METADATA");
   const normalizedSkills = validateSelectorList(skills, rolePathValue, "skills", "INVALID_METADATA");
   const normalizedExtensions = validateSelectorList(extensions, rolePathValue, "extensions", "INVALID_METADATA");
+  const normalizedMcp = validateSelectorList(mcp, rolePathValue, "mcp", "INVALID_METADATA", false);
   const normalizedExtensionSettings = validateExtensionSettings(extensionSettings, rolePathValue, "INVALID_METADATA");
   const normalizedDescription = typeof description === "string" ? description.trim() : undefined;
   const normalizedModel = typeof model === "string" ? model.trim() : undefined;
@@ -94,6 +97,7 @@ export function parseRoleMarkdown(content: string, strict = false, rolePath?: st
   if (normalizedTools !== undefined) definition.tools = normalizedTools;
   if (normalizedSkills !== undefined) definition.skills = normalizedSkills;
   if (normalizedExtensions !== undefined) definition.extensions = normalizedExtensions;
+  if (normalizedMcp !== undefined) definition.mcp = normalizedMcp;
   if (normalizedExtensionSettings !== undefined) definition.extensionSettings = normalizedExtensionSettings;
   if (typeof overrideSystemPrompt === "boolean") definition.overrideSystemPrompt = overrideSystemPrompt;
   if (normalizedContextFiles !== undefined) definition.contextFiles = normalizedContextFiles;
@@ -165,6 +169,7 @@ export interface RoleResourceCandidates {
   skills?: readonly string[];
   extensions?: readonly string[];
   tools?: readonly string[];
+  mcp?: readonly string[];
 }
 export interface RoleResolutionOptions extends RoleDiscoveryOptions {
   definition?: AgentDefinition;
@@ -186,6 +191,7 @@ export interface RoleResolutionOptions extends RoleDiscoveryOptions {
   tools?: readonly string[];
   skills?: readonly string[];
   extensions?: readonly string[];
+  mcp?: readonly string[];
   contextFiles?: readonly ContextFileScope[];
   effectiveTools?: readonly string[];
   extensionSettings?: Readonly<ExtensionSettings>;
@@ -204,7 +210,8 @@ export interface ResolvedRole {
   contextFiles?: readonly ContextFileScope[];
   extensionSettings?: Readonly<ExtensionSettings>;
   selectorSources: AgentResourceSelectorSources;
-  selectorLayers: { skills: readonly (readonly string[] | undefined)[]; extensions: readonly (readonly string[] | undefined)[]; tools: readonly (readonly string[] | undefined)[] };
+  selectorLayers: { skills: readonly (readonly string[] | undefined)[]; extensions: readonly (readonly string[] | undefined)[]; tools: readonly (readonly string[] | undefined)[]; mcp: readonly (readonly string[] | undefined)[] };
+  selectedMcp?: readonly string[];
   selectedSkills?: readonly string[];
   selectedExtensions?: readonly string[];
   unmatchedSkills?: readonly string[];
@@ -324,18 +331,20 @@ export function resolveRole(name: string | undefined, options: RoleResolutionOpt
   const overlaySelectors = (base: AgentResourceSelectors | undefined, layer: AgentResourceSelectors): AgentResourceSelectors | undefined => {
     if (base === undefined && Object.keys(layer).length === 0) return undefined;
     const merged = { ...base };
-    for (const kind of ["skills", "extensions", "tools"] as const) if (layer[kind] !== undefined) merged[kind] = [...(base?.[kind] ?? []), ...layer[kind]];
+    for (const kind of ["skills", "extensions", "tools", "mcp"] as const) if (layer[kind] !== undefined) merged[kind] = [...(base?.[kind] ?? []), ...layer[kind]];
     return merged;
   };
   const roleLayer = overlaySelectors(baseSources.role, {
     ...(definition?.skills === undefined ? {} : { skills: definition.skills }),
     ...(definition?.extensions === undefined ? {} : { extensions: definition.extensions.map(selector => canonicalExtensionSelector(selector, path ? dirname(path) : options.cwd)) }),
     ...(definition?.tools === undefined ? {} : { tools: definition.tools }),
+    ...(definition?.mcp === undefined ? {} : { mcp: definition.mcp }),
   });
   const callLayer = overlaySelectors(baseSources.call, {
     ...(options.skills === undefined ? {} : { skills: options.skills }),
     ...(options.extensions === undefined ? {} : { extensions: options.extensions.map(selector => canonicalExtensionSelector(selector, options.cwd)) }),
     ...(options.tools === undefined ? {} : { tools: options.tools }),
+    ...(options.mcp === undefined ? {} : { mcp: options.mcp }),
   });
   const selectorSources = canonicalSources({ ...baseSources, global: baseSources.global, project: baseSources.project, ...(roleLayer === undefined ? {} : { role: roleLayer }), ...(callLayer === undefined ? {} : { call: callLayer }) });
   const callSelectors = selectorSources.call;
@@ -344,8 +353,30 @@ export function resolveRole(name: string | undefined, options: RoleResolutionOpt
     skills: [...(selectorSources.defaults ? [selectorSources.defaults.global.skills, selectorSources.defaults.project.skills] : []), selectorSources.global.skills, selectorSources.project.skills, roleSelectors?.skills, callSelectors?.skills],
     extensions: [...(selectorSources.defaults ? [selectorSources.defaults.global.extensions, selectorSources.defaults.project.extensions] : []), selectorSources.global.extensions, selectorSources.project.extensions, roleSelectors?.extensions, callSelectors?.extensions],
     tools: [...(selectorSources.defaults ? [selectorSources.defaults.global.tools, selectorSources.defaults.project.tools] : []), selectorSources.global.tools, selectorSources.project.tools, roleSelectors?.tools, callSelectors?.tools],
+    mcp: [...(selectorSources.defaults ? [selectorSources.defaults.global.mcp, selectorSources.defaults.project.mcp] : []), selectorSources.global.mcp, selectorSources.project.mcp, roleSelectors?.mcp, callSelectors?.mcp],
   };
+  const declaredToolLayers = selectorLayers.tools;
+  const mcpSelectors = selectorLayers.mcp.flatMap(layer => layer ?? []);
+  const mcpSelectorPresent = selectorLayers.mcp.some(layer => layer !== undefined);
   const resources = options.resources ?? {};
+  const selectedMcp = resources.mcp === undefined || !mcpSelectorPresent ? undefined : mcpSelectors.length === 0 ? [] : selectResourcesByLayers([["!*"], ...selectorLayers.mcp], resources.mcp);
+  const sanitizeServer = (server: string): string => server.replace(/[^A-Za-z0-9_]/g, "_");
+  const mcpToolLayer = !mcpSelectorPresent ? undefined : selectedMcp !== undefined
+    ? selectedMcp.length === 0 ? ["!mcp__*"] : ["!mcp__*", ...selectedMcp.map(server => `mcp__${sanitizeServer(server)}__*`)]
+    : (() => {
+        const hasClear = mcpSelectors.some(pattern => pattern === "!*");
+        const hasPositive = mcpSelectors.some(pattern => !pattern.startsWith("!"));
+        const layer = mcpSelectors.length === 0 || mcpSelectors.length === 1 && mcpSelectors[0] === "!*" ? ["!mcp__*"] : (!hasClear && !hasPositive) ? ["mcp__*__*"] : ["!mcp__*"];
+        for (const pattern of mcpSelectors) {
+          if (mcpSelectors.length === 1 && pattern === "!*") continue;
+          const negated = pattern.startsWith("!");
+          const body = negated ? pattern.slice(1) : pattern;
+          if (body === "*") layer.push(negated ? "!mcp__*" : "mcp__*__*");
+          else layer.push(`${negated ? "!" : ""}mcp__${body.replace(/[^A-Za-z0-9_*?\[\]{}()]/g, "_")}__*`);
+        }
+        return layer;
+      })();
+  if (mcpToolLayer !== undefined) selectorLayers.tools = [...declaredToolLayers, mcpToolLayer];
   const rootTools = rootToolNames(options.rootTools);
   const ceilings = [options.inheritedTools, rootTools, resources.tools].filter((tools): tools is readonly string[] => tools !== undefined);
   const candidateTools = ceilings[0]?.filter(tool => ceilings.every(ceiling => ceiling.includes(tool)));
@@ -365,7 +396,7 @@ export function resolveRole(name: string | undefined, options: RoleResolutionOpt
   const selectedExtensions = extensionResources === undefined ? undefined : selectResourcesByLayers(selectorLayers.extensions, extensionResources);
   const unmatchedSkills = resources.skills === undefined ? undefined : unmatchedResourcePatterns(selectorLayers.skills.flatMap((layer) => layer ?? []), resources.skills);
   const unmatchedExtensions = extensionResources === undefined ? undefined : unmatchedResourcePatterns(selectorLayers.extensions.flatMap((layer) => layer ?? []), extensionResources);
-  const unmatchedTools = candidateTools === undefined ? undefined : unmatchedResourcePatterns(selectorLayers.tools.flatMap((layer) => layer ?? []), candidateTools);
+  const unmatchedTools = candidateTools === undefined ? undefined : unmatchedResourcePatterns(declaredToolLayers.flatMap((layer) => layer ?? []), candidateTools);
   const aliases = composed.modelAliases;
   const requestedModel = options.model ?? (definition?.model && definition.thinking && !definition.model.includes(":") ? `${definition.model}:${definition.thinking}` : definition?.model);
   const blockedAlias = requestedModel?.split(":", 1)[0];
@@ -385,5 +416,5 @@ export function resolveRole(name: string | undefined, options: RoleResolutionOpt
   const prompt = options.prompt ?? definition?.prompt ?? "";
   const overrideSystemPrompt = options.overrideSystemPrompt ?? definition?.overrideSystemPrompt === true;
   const contextFiles = options.contextFiles ?? definition?.contextFiles;
-  return { ...(name === undefined ? {} : { name }), ...(definition === undefined ? {} : { definition }), ...(model === undefined ? {} : { model }), ...(modelAliasName(requestedModel ?? "", aliases) && requestedModel ? { requestedModel } : {}), ...(tools === undefined ? {} : { tools }), prompt, overrideSystemPrompt, systemPrompt: { mode: overrideSystemPrompt ? "override" : "append", text: prompt }, ...(contextFiles === undefined ? {} : { contextFiles: [...contextFiles] }), ...(mergedSettings === undefined ? {} : { extensionSettings: mergedSettings }), selectorSources, selectorLayers, ...(selectedSkills === undefined ? {} : { selectedSkills }), ...(selectedExtensions === undefined ? {} : { selectedExtensions }), ...(unmatchedSkills === undefined ? {} : { unmatchedSkills }), ...(unmatchedExtensions === undefined ? {} : { unmatchedExtensions }), ...(unmatchedTools === undefined ? {} : { unmatchedTools }) };
+  return { ...(name === undefined ? {} : { name }), ...(definition === undefined ? {} : { definition }), ...(model === undefined ? {} : { model }), ...(selectedMcp === undefined ? {} : { selectedMcp }), ...(modelAliasName(requestedModel ?? "", aliases) && requestedModel ? { requestedModel } : {}), ...(tools === undefined ? {} : { tools }), prompt, overrideSystemPrompt, systemPrompt: { mode: overrideSystemPrompt ? "override" : "append", text: prompt }, ...(contextFiles === undefined ? {} : { contextFiles: [...contextFiles] }), ...(mergedSettings === undefined ? {} : { extensionSettings: mergedSettings }), selectorSources, selectorLayers, ...(selectedSkills === undefined ? {} : { selectedSkills }), ...(selectedExtensions === undefined ? {} : { selectedExtensions }), ...(unmatchedSkills === undefined ? {} : { unmatchedSkills }), ...(unmatchedExtensions === undefined ? {} : { unmatchedExtensions }), ...(unmatchedTools === undefined ? {} : { unmatchedTools }) };
 }

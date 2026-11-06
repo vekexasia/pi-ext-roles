@@ -11,6 +11,7 @@ const root=fileURLToPath(new URL('..',import.meta.url)),cli=join(root,'dist/cli.
 test('private payload validates every layer, refusing malformed and invalid selectors',()=>{
  for(const payload of [undefined,'{}','[null]','[null,null,null,1]','[null,null,null,["!"]]'])assert.throws(()=>parseToolLayers(payload));
  assert.deepEqual(parseToolLayers('[null,null,["!*","driver*"],null]'),[undefined,undefined,['!*','driver*'],undefined]);
+ assert.deepEqual(parseToolLayers('[null,null,null,["!*"],["!mcp__*"]]'),[undefined,undefined,undefined,['!*'],['!mcp__*']]);
 });
 test('native requests, stdin/session passthrough, loadout nested execution and absolute callable ceilings', {timeout:90000}, async t=>{
  const dir=mkdtempSync(join(tmpdir(),'roles-native-')),cwd=join(dir,'cwd'),agent=join(dir,'agent'),log=join(dir,'events');
@@ -82,7 +83,7 @@ pi.on('session_shutdown',()=>log({type:'shutdown'}));
  const rpc=spawn(process.execPath,[cli,'fixture','--mode','rpc','--no-session'],{cwd,env,stdio:['pipe','pipe','pipe']});
  t.after(()=>{if(rpc.exitCode===null)rpc.kill('SIGKILL');});
  const waiting=new Map();let buffer='';rpc.stderr.resume();
- rpc.stdout.on('data',chunk=>{buffer+=chunk;let index;while((index=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);try{const event=JSON.parse(line);waiting.get(event.type==='agent_end'?'end':event.id)?.(event);}catch{}}});
+ rpc.stdout.on('data',chunk=>{buffer+=chunk;let index;while((index=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);try{const event=JSON.parse(line);waiting.get(event.type==='agent_end'?'end':event.id)?.(event);}catch{continue;}}});
  const ask=command=>new Promise(resolve=>{waiting.set(command.id,resolve);rpc.stdin.write(JSON.stringify(command)+'\n');});
  await ask({id:'ready',type:'get_state'});await ask({id:'mute',type:'prompt',message:'/mute'});
  const ended=new Promise(resolve=>waiting.set('end',resolve));
